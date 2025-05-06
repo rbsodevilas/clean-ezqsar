@@ -1,0 +1,107 @@
+library(stringr)
+
+# Function to clean and standardize each molecule block
+clean_molecule_block <- function(block, index) {
+  # Split the block into lines
+  lines <- strsplit(block, "\n")[[1]]
+  
+  # Ensure the block isn't empty
+  if (length(lines) == 0) return(NULL)
+  
+  # Extract the CHEMBL ID from the block
+  chembl_id <- NA
+  for (i in seq_along(lines)) {
+    if (startsWith(trimws(lines[i]), "> <chembl_id>")) {
+      # The CHEMBL ID is on the next line
+      chembl_id <- trimws(lines[i + 1])
+      break
+    }
+  }
+  
+  # If no CHEMBL ID is found, skip this block
+  if (is.na(chembl_id)) return(NULL)
+  
+  # Remove all white spaces outside the coordinates
+  lines <- lines[trimws(lines) != ""]
+  
+  # Ensure exactly two empty lines after the compound name
+  cleaned_block <- c(
+    chembl_id,  # Use the CHEMBL ID as the compound name
+    "",  # First empty line
+    "",  # Second empty line
+    lines[-1]  # Keep the rest of the molecule block content
+  )
+  
+  # Insert blank lines two lines after each ">" line
+  result_lines <- c()
+  i <- 1
+  while (i <= length(cleaned_block)) {
+    result_lines <- c(result_lines, cleaned_block[i])
+    if (startsWith(trimws(cleaned_block[i]), ">")) {
+      # Add a blank line two lines after a ">" line if not already present
+      if (i + 2 <= length(cleaned_block) && trimws(cleaned_block[i + 2]) != "") {
+        result_lines <- c(result_lines, cleaned_block[i + 1], "", cleaned_block[i + 2])
+        i <- i + 2
+      }
+    }
+    i <- i + 1
+  }
+  
+  # Ensure "$" is present at the end of each block
+  if (tail(result_lines, 1) != "$$$$") {
+    if (tail(result_lines, 1) != "") {
+      result_lines <- c(result_lines, "", "$$$$")
+    } else {
+      result_lines <- c(result_lines, "$$$$")
+    }
+  }
+  
+  # Return as a single formatted block
+  paste(result_lines, collapse = "\n")
+}
+
+# Function to process each SDF file
+clean_sdf_file <- function(input_file, output_file) {
+  # Read the entire file while preserving spaces
+  sdf_content <- readLines(input_file, warn = FALSE)
+  
+  # Split into molecule blocks using "$$$$" as the delimiter
+  molecule_blocks <- strsplit(paste(sdf_content, collapse = "\n"), "\\$\\$\\$\\$")[[1]]
+  
+  # Clean each block and assign correct numbering
+  cleaned_blocks <- lapply(seq_along(molecule_blocks), function(i) {
+    block <- molecule_blocks[i]
+    if (nchar(trimws(block)) > 0) {
+      clean_molecule_block(block, i)
+    } else {
+      NULL  # Skip empty blocks
+    }
+  })
+  
+  # Remove empty elements and combine cleaned blocks
+  cleaned_blocks <- cleaned_blocks[!sapply(cleaned_blocks, is.null)]
+  cleaned_sdf_content <- paste(cleaned_blocks, collapse = "\n")
+  
+  # Write the cleaned content to the output file
+  writeLines(cleaned_sdf_content, output_file)
+  
+  # Print a confirmation message
+  print(paste("Processed:", input_file, "->", output_file))
+}
+
+# Define input and output directories
+input_directory <- "C:/Users/your_input_folder_here"
+output_directory <- "C:/Users/your_input_folder_here"
+
+# Get a list of all SDF files in the input directory
+input_files <- list.files(input_directory, pattern = "\\.sdf$", full.names = TRUE)
+
+# Process each file
+for (input_file in input_files) {
+  # Generate the output file name
+  file_name <- basename(input_file)
+  output_file <- file.path(output_directory, paste0("cleaned_", file_name))
+  
+  # Process the file
+  clean_sdf_file(input_file, output_file)
+}
